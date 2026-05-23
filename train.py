@@ -66,13 +66,19 @@ def main(args):
 
     model = AVoiD_mm(args, num_classes=args.num_classes, has_logits=False).to(device)
 
-    if args.weights != "":
+    start_epoch = 0
+    if args.resume != "":
+        assert os.path.exists(args.resume), f"checkpoint not found: {args.resume}"
+        ckpt = torch.load(args.resume, map_location=device)
+        model.load_state_dict(ckpt["model"])
+        optimizer.load_state_dict(ckpt["optimizer"])
+        scheduler.load_state_dict(ckpt["scheduler"])
+        start_epoch = ckpt["epoch"] + 1
+        main._best_val_acc = ckpt.get("best_val_acc", 0)
+        print(f"Resumed from epoch {ckpt['epoch']} (best val_acc {main._best_val_acc:.3f})")
+    elif args.weights != "":
         assert os.path.exists(args.weights), "weights file: '{}' not exist.".format(args.weights)
         weights_dict = torch.load(args.weights, map_location=device)
-        del_keys = ['head.weight', 'head.bias'] if model.has_logits \
-            else ['pre_logits.fc.weight', 'pre_logits.fc.bias', 'head.weight', 'head.bias']
-        for k in del_keys:
-            del weights_dict[k]
         print(model.load_state_dict(weights_dict, strict=False))
 
     if args.freeze_layers:
@@ -88,7 +94,7 @@ def main(args):
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     loss_weight = torch.nn.Parameter(torch.ones(1)).to(device)
 
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         # train
         train_loss, train_acc = train_one_epoch(args,model=model,
                                                 optimizer=optimizer,
@@ -111,7 +117,25 @@ def main(args):
         tb_writer.add_scalar(tags[3], val_acc, epoch)
         tb_writer.add_scalar(tags[4], optimizer.param_groups[0]["lr"], epoch)
 
+        print(f"epoch {epoch:4d} | "
+              f"train loss {train_loss:.4f}  acc {train_acc:.4f} | "
+              f"val loss {val_loss:.4f}  acc {val_acc:.4f}")
+
         tb_writer.close()
+
+        # Save checkpoint every 10 epochs and whenever val_acc improves
+        if epoch % 10 == 0 or val_acc > getattr(main, "_best_val_acc", 0):
+            if val_acc > getattr(main, "_best_val_acc", 0):
+                main._best_val_acc = val_acc
+                torch.save(model.state_dict(), "./weights/best.pth")
+            torch.save({
+                "epoch": epoch,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+                "best_val_acc": getattr(main, "_best_val_acc", 0),
+            }, "./weights/checkpoint.pth")
+            print(f"  checkpoint saved (epoch {epoch}, val_acc {val_acc:.3f})")
 
 
 if __name__ == '__main__':
@@ -132,6 +156,8 @@ if __name__ == '__main__':
     parser.add_argument('--model-name', default='', help='create model name')
     parser.add_argument('--weights', type=str, default='',
                         help='initial weights path')
+    parser.add_argument('--resume', type=str, default='',
+                        help='resume from checkpoint path (e.g. ./weights/checkpoint.pth)')
     parser.add_argument('--freeze-layers', type=bool, default=True)
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 

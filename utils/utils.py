@@ -11,7 +11,7 @@ def train_one_epoch(args, model, optimizer, data_loader, device, epoch, loss_wei
     accu_num = torch.zeros(1).to(device)
     sample_num = 0
 
-    pbar = tqdm(data_loader, desc=f"[train epoch {epoch}]")
+    pbar = tqdm(data_loader, desc=f"  train", leave=False, ncols=60)
     for step, (images, images_labels, audio, audio_labels) in enumerate(pbar):
         images = images.to(device)
         audio = audio.to(device)
@@ -19,18 +19,13 @@ def train_one_epoch(args, model, optimizer, data_loader, device, epoch, loss_wei
 
         optimizer.zero_grad()
         out, feat, cls_v, cls_a = model(images, audio)
-
         loss = loss_fn(out, images_labels)
         loss.backward()
         optimizer.step()
 
-        pred_classes = out.argmax(dim=1)
-        accu_num += pred_classes.eq(images_labels).sum()
+        accu_num += out.argmax(dim=1).eq(images_labels).sum()
         accu_loss += loss.detach()
         sample_num += images.shape[0]
-
-        pbar.set_postfix(loss=f"{accu_loss.item()/(step+1):.3f}",
-                         acc=f"{accu_num.item()/sample_num:.3f}")
 
         if not torch.isfinite(loss):
             print("WARNING: non-finite loss, ending training", loss)
@@ -47,7 +42,7 @@ def evaluate(args, model, data_loader, device, epoch, loss_weight):
     accu_num = torch.zeros(1).to(device)
     sample_num = 0
 
-    pbar = tqdm(data_loader, desc=f"[val   epoch {epoch}]")
+    pbar = tqdm(data_loader, desc=f"  val  ", leave=False, ncols=60)
     for step, (images, images_labels, audio, audio_labels) in enumerate(pbar):
         images = images.to(device)
         audio = audio.to(device)
@@ -55,13 +50,8 @@ def evaluate(args, model, data_loader, device, epoch, loss_weight):
 
         out, feat, cls_v, cls_a = model(images, audio)
         loss = loss_fn(out, images_labels)
-
-        pred_classes = out.argmax(dim=1)
-        accu_num += pred_classes.eq(images_labels).sum()
+        accu_num += out.argmax(dim=1).eq(images_labels).sum()
         accu_loss += loss
         sample_num += images.shape[0]
-
-        pbar.set_postfix(loss=f"{accu_loss.item()/(step+1):.3f}",
-                         acc=f"{accu_num.item()/sample_num:.3f}")
 
     return accu_loss.item() / (step + 1), accu_num.item() / sample_num
