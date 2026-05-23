@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import librosa
 from PIL import Image
+from tqdm import tqdm
 
 
 def extract_frames(mp4_path, out_dir, fps=1):
@@ -32,7 +33,6 @@ def extract_audio_chunks(mp4_path, out_dir, chunk_sec=1.0, sr=22050):
         capture_output=True,
     )
     if not os.path.exists(wav_path):
-        print(f"  [warn] audio extraction failed: {mp4_path}")
         return
     y, sr = librosa.load(wav_path, sr=sr)
     os.remove(wav_path)
@@ -48,8 +48,8 @@ def extract_audio_chunks(mp4_path, out_dir, chunk_sec=1.0, sr=22050):
         img.save(os.path.join(out_dir, f"chunk_{idx:04d}.png"))
 
 
-def process_category(category_path, video_out, audio_out, category_name, fps, chunk_sec, max_per_subgroup):
-    total = 0
+def collect_videos(category_path, max_per_subgroup):
+    videos = []
     for race in sorted(os.listdir(category_path)):
         race_path = os.path.join(category_path, race)
         if not os.path.isdir(race_path):
@@ -70,16 +70,22 @@ def process_category(category_path, video_out, audio_out, category_name, fps, ch
                         break
                     if not f.endswith(".mp4"):
                         continue
-                    mp4 = os.path.join(id_path, f)
-                    stem = f.replace(".mp4", "")
-                    v_out = os.path.join(video_out, category_name, race, gender, identity + "_" + stem)
-                    a_out = os.path.join(audio_out, category_name, race, gender, identity + "_" + stem)
-                    print(f"[{race}/{gender} {count+1}{'/'+str(max_per_subgroup) if max_per_subgroup else ''}] {category_name}/{identity}/{f}")
-                    extract_frames(mp4, v_out, fps=fps)
-                    extract_audio_chunks(mp4, a_out, chunk_sec=chunk_sec)
+                    videos.append((race, gender, identity, f))
                     count += 1
-                    total += 1
-    print(f"  → {total} videos processed for {category_name}")
+    return videos
+
+
+def process_category(category_path, video_out, audio_out, category_name, fps, chunk_sec, max_per_subgroup):
+    videos = collect_videos(category_path, max_per_subgroup)
+    pbar = tqdm(videos, desc=category_name, unit="video")
+    for race, gender, identity, f in pbar:
+        pbar.set_postfix(subgroup=f"{race}/{gender}", refresh=False)
+        mp4 = os.path.join(category_path, race, gender, identity, f)
+        stem = f.replace(".mp4", "")
+        v_out = os.path.join(video_out, category_name, race, gender, identity + "_" + stem)
+        a_out = os.path.join(audio_out, category_name, race, gender, identity + "_" + stem)
+        extract_frames(mp4, v_out, fps=fps)
+        extract_audio_chunks(mp4, a_out, chunk_sec=chunk_sec)
 
 
 def main():
