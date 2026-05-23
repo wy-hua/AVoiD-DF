@@ -48,30 +48,39 @@ def extract_audio_chunks(mp4_path, out_dir, chunk_sec=1.0, sr=22050):
         img.save(os.path.join(out_dir, f"chunk_{idx:04d}.png"))
 
 
-def process_category(category_path, video_out, audio_out, category_name, fps, chunk_sec):
+def process_category(category_path, video_out, audio_out, category_name, fps, chunk_sec, max_videos):
+    count = 0
     for race in sorted(os.listdir(category_path)):
+        if max_videos and count >= max_videos:
+            break
         race_path = os.path.join(category_path, race)
         if not os.path.isdir(race_path):
             continue
         for gender in sorted(os.listdir(race_path)):
+            if max_videos and count >= max_videos:
+                break
             gender_path = os.path.join(race_path, gender)
             if not os.path.isdir(gender_path):
                 continue
             for identity in sorted(os.listdir(gender_path)):
+                if max_videos and count >= max_videos:
+                    break
                 id_path = os.path.join(gender_path, identity)
                 if not os.path.isdir(id_path):
                     continue
-                for f in os.listdir(id_path):
+                for f in sorted(os.listdir(id_path)):
+                    if max_videos and count >= max_videos:
+                        break
                     if not f.endswith(".mp4"):
                         continue
                     mp4 = os.path.join(id_path, f)
                     stem = f.replace(".mp4", "")
-                    rel = os.path.join(race, gender, identity + "_" + stem)
                     v_out = os.path.join(video_out, category_name, race, gender, identity + "_" + stem)
                     a_out = os.path.join(audio_out, category_name, race, gender, identity + "_" + stem)
-                    print(f"Processing {category_name}/{race}/{gender}/{identity}/{f}")
+                    print(f"[{count+1}{'/'+str(max_videos) if max_videos else ''}] {category_name}/{race}/{gender}/{identity}/{f}")
                     extract_frames(mp4, v_out, fps=fps)
                     extract_audio_chunks(mp4, a_out, chunk_sec=chunk_sec)
+                    count += 1
 
 
 def main():
@@ -90,6 +99,8 @@ def main():
                         help="Frames per second to extract")
     parser.add_argument("--chunk_sec", type=float, default=1.0,
                         help="Audio chunk duration in seconds")
+    parser.add_argument("--max_videos", type=int, default=0,
+                        help="Max videos to process per category (0 = no limit)")
     args = parser.parse_args()
 
     for category in args.categories:
@@ -98,7 +109,7 @@ def main():
             print(f"[skip] {cat_path} not found")
             continue
         process_category(cat_path, args.video_out, args.audio_out, category,
-                         args.fps, args.chunk_sec)
+                         args.fps, args.chunk_sec, args.max_videos)
 
     print("Extraction complete.")
 
