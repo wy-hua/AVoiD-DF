@@ -64,7 +64,7 @@ def main(args):
                                              num_workers=nw,
                                              collate_fn=val_dataset.collate_fn)
 
-    model = AVoiD_mm(args, num_classes=45, has_logits=False).to(device)
+    model = AVoiD_mm(args, num_classes=args.num_classes, has_logits=False).to(device)
 
     if args.weights != "":
         assert os.path.exists(args.weights), "weights file: '{}' not exist.".format(args.weights)
